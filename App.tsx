@@ -163,6 +163,8 @@ const App: React.FC = () => {
     setData(importedData);
     setAuditLogs([]);
     setSessionLogs([]);
+    // Save all imported records to SQL Server database
+    api.saveForecastBatch(importedData).catch(() => {});
   };
 
   const handleSelection = (client: string, section: string, subsidiary: string) => {

@@ -162,13 +162,13 @@ export const createActionItem = (item: ActionItem) =>
     body: JSON.stringify(item),
   });
 
-export const updateActionItem = (id: number, item: ActionItem) =>
+export const updateActionItem = (id: string, item: ActionItem) =>
   request<ActionItem>(`/action-items/${id}`, {
     method: 'PUT',
     body: JSON.stringify(item),
   });
 
-export const deleteActionItem = (id: number) =>
+export const deleteActionItem = (id: string) =>
   request<void>(`/action-items/${id}`, { method: 'DELETE' });
 
 // Users
