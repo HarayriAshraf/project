@@ -665,17 +665,21 @@ def get_action_items():
 
 @app.post("/api/action-items", response_model=ActionItem)
 def create_action_item(item: ActionItem):
+    date_opened = item.date_opened if item.date_opened else None
+    due_date = item.due_date if item.due_date else None
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO action_items (title,description,company,status,date_opened,due_date,
                 meeting_topic,assignee_email,assignee_name,subsidiary,notes)
+            OUTPUT INSERTED.id
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """,
-        item.title,item.description,item.company,item.status,item.date_opened,item.due_date,
-        item.meeting_topic,item.assignee_email,item.assignee_name,item.subsidiary,item.notes)
-        cursor.execute("SELECT SCOPE_IDENTITY()")
-        new_id = int(cursor.fetchone()[0])
+        item.title, item.description or '', item.company or '', item.status or 'Open',
+        date_opened, due_date, item.meeting_topic or '', item.assignee_email or '',
+        item.assignee_name or '', item.subsidiary or '', item.notes or '')
+        row = cursor.fetchone()
+        new_id = int(row[0]) if row else 0
         item.id = new_id
         if item.updates:
             _upsert_action_updates(cursor, new_id, item.updates)
@@ -684,6 +688,8 @@ def create_action_item(item: ActionItem):
 
 @app.put("/api/action-items/{item_id}", response_model=ActionItem)
 def update_action_item(item_id: int, item: ActionItem):
+    date_opened = item.date_opened if item.date_opened else None
+    due_date = item.due_date if item.due_date else None
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -691,9 +697,9 @@ def update_action_item(item_id: int, item: ActionItem):
                 due_date=?,meeting_topic=?,assignee_email=?,assignee_name=?,subsidiary=?,notes=?
             WHERE id=?
         """,
-        item.title,item.description,item.company,item.status,item.date_opened,item.due_date,
-        item.meeting_topic,item.assignee_email,item.assignee_name,item.subsidiary,item.notes,item_id)
-        cursor.execute("DELETE FROM action_item_updates WHERE action_item_id=?", item_id)
+        item.title, item.description or '', item.company or '', item.status or 'Open',
+        date_opened, due_date, item.meeting_topic or '', item.assignee_email or '',
+        item.assignee_name or '', item.subsidiary or '', item.notes or '', item_id)
         if item.updates:
             _upsert_action_updates(cursor, item_id, item.updates)
     return item
@@ -710,10 +716,12 @@ def delete_action_item(item_id: int):
 
 def _upsert_action_updates(cursor, item_id: int, updates: List[ActionItemUpdate]):
     for u in updates:
+        date_val = u.date if u.date else None
         cursor.execute("""
-            INSERT INTO action_item_updates (id,action_item_id,date,status,notes,timestamp)
-            VALUES (?,?,?,?,?,?)
-        """, u.id, item_id, u.date, u.status, u.notes, u.timestamp)
+            IF NOT EXISTS (SELECT 1 FROM action_item_updates WHERE id=?)
+                INSERT INTO action_item_updates (id,action_item_id,date,status,notes,timestamp)
+                VALUES (?,?,?,?,?,?)
+        """, u.id, u.id, item_id, date_val, u.status or '', u.notes or '', u.timestamp or '')
 
 
 # ---------------------------------------------------------------------------
