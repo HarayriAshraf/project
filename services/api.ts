@@ -9,6 +9,7 @@ import {
   ActionItem,
   User,
   Permission,
+  RoleDefinition,
 } from '../types';
 
 const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL)
@@ -198,3 +199,22 @@ export const updatePermission = (userId: string, canEdit: number) =>
     method: 'PUT',
     body: JSON.stringify({ user_id: userId, can_edit: canEdit }),
   });
+
+// Roles
+export const getRoles = () =>
+  request<RoleDefinition[]>('/roles');
+
+export const createRole = (role: RoleDefinition) =>
+  request<RoleDefinition>('/roles', {
+    method: 'POST',
+    body: JSON.stringify({ id: role.id, name: role.name, authorities: role.authorities }),
+  });
+
+export const updateRole = (id: string, role: RoleDefinition) =>
+  request<RoleDefinition>(`/roles/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ id: role.id, name: role.name, authorities: role.authorities }),
+  });
+
+export const deleteRole = (id: string) =>
+  request<void>(`/roles/${id}`, { method: 'DELETE' });

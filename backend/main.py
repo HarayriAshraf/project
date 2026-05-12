@@ -781,6 +781,58 @@ class PermissionModel(BaseModel):
     can_edit: int  # 1 = Editor, 0 = Viewer
 
 
+# ---------------------------------------------------------------------------
+# Roles & Authorities
+# ---------------------------------------------------------------------------
+
+class RoleModel(BaseModel):
+    id: str
+    name: str
+    authorities: Optional[List[int]] = []
+
+
+@app.get("/api/roles", response_model=List[RoleModel])
+def get_roles():
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM roles ORDER BY name")
+        roles = [{"id": row[0], "name": row[1], "authorities": []} for row in cursor.fetchall()]
+        for role in roles:
+            cursor.execute("SELECT authority FROM role_authorities WHERE role_id=? ORDER BY authority", role["id"])
+            role["authorities"] = [row[0] for row in cursor.fetchall()]
+        return roles
+
+
+@app.post("/api/roles", response_model=RoleModel)
+def create_role(role: RoleModel):
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO roles (id, name) VALUES (?,?)", role.id, role.name)
+        for auth in (role.authorities or []):
+            cursor.execute("INSERT INTO role_authorities (role_id, authority) VALUES (?,?)", role.id, auth)
+    return role
+
+
+@app.put("/api/roles/{role_id}", response_model=RoleModel)
+def update_role(role_id: str, role: RoleModel):
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE roles SET name=? WHERE id=?", role.name, role_id)
+        cursor.execute("DELETE FROM role_authorities WHERE role_id=?", role_id)
+        for auth in (role.authorities or []):
+            cursor.execute("INSERT INTO role_authorities (role_id, authority) VALUES (?,?)", role_id, auth)
+    return role
+
+
+@app.delete("/api/roles/{role_id}")
+def delete_role(role_id: str):
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM role_authorities WHERE role_id=?", role_id)
+        cursor.execute("DELETE FROM roles WHERE id=?", role_id)
+    return {"deleted": role_id}
+
+
 @app.get("/api/permissions", response_model=List[PermissionModel])
 def get_permissions():
     with db() as conn:

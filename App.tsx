@@ -131,14 +131,18 @@ const App: React.FC = () => {
 
     loadData();
 
-    const initialRoles: RoleDefinition[] = [
+    // Load roles from database, fall back to defaults if unavailable
+    const defaultRoles: RoleDefinition[] = [
       { id: 'role-admin', name: 'Admin', authorities: Object.values(AppView).filter(v => typeof v === 'number') as AppView[] },
       { id: 'role-sales', name: 'Sales', authorities: [AppView.DASHBOARD, AppView.FORECASTER, AppView.FORECAST_SELECTION, AppView.FORECAST_REVIEW, AppView.CRM, AppView.ACTION_ITEMS] },
       { id: 'role-manager', name: 'Manager', authorities: [AppView.DASHBOARD, AppView.FORECASTER, AppView.FORECAST_SELECTION, AppView.FORECAST_REVIEW, AppView.CRM, AppView.ACTION_ITEMS, AppView.AUDIT_DASHBOARD] },
       { id: 'role-board', name: 'Board', authorities: [AppView.EXECUTIVE_DASHBOARD, AppView.DETAILED_CHARTS] },
       { id: 'role-analyst', name: 'Data Analyst', authorities: [AppView.DASHBOARD, AppView.DETAILED_CHARTS, AppView.GAP_ANALYSIS, AppView.SCENARIO_PLANNING] },
     ];
-    setRoles(initialRoles);
+    api.getRoles().then(dbRoles => {
+      if (dbRoles && dbRoles.length > 0) setRoles(dbRoles as RoleDefinition[]);
+      else setRoles(defaultRoles);
+    }).catch(() => setRoles(defaultRoles));
 
     const initialUsers: User[] = [
       { id: 'user-1', email: 'admin@company.com', name: 'Admin User', roleId: 'role-admin' },
@@ -943,9 +947,18 @@ const App: React.FC = () => {
               setUsers(users.filter(u => u.id !== id));
               api.deleteUser(id).catch(() => {});
             }}
-            onAddRole={(r) => setRoles([...roles, r])}
-            onUpdateRole={(r) => setRoles(roles.map(role => role.id === r.id ? r : role))}
-            onDeleteRole={(id) => setRoles(roles.filter(r => r.id !== id))}
+            onAddRole={(r) => {
+              setRoles(prev => [...prev, r]);
+              api.createRole(r).catch(() => {});
+            }}
+            onUpdateRole={(r) => {
+              setRoles(prev => prev.map(role => role.id === r.id ? r : role));
+              api.updateRole(r.id, r).catch(() => {});
+            }}
+            onDeleteRole={(id) => {
+              setRoles(prev => prev.filter(r => r.id !== id));
+              api.deleteRole(id).catch(() => {});
+            }}
           />
         )}
         </div>
