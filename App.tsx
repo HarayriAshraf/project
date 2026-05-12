@@ -94,6 +94,7 @@ const App: React.FC = () => {
         setPurchaseOrders(fetchedPurchaseOrders);
         setCrmActivities(fetchedCrmActivities);
         setActionItems(fetchedActionItems);
+        localStorage.setItem('actionItems', JSON.stringify(fetchedActionItems));
         
         if (fetchedUsers && fetchedUsers.length > 0) {
           setUsers(fetchedUsers);
@@ -103,6 +104,10 @@ const App: React.FC = () => {
         }
       } catch (err) {
         console.warn('Backend unavailable, using local mock data.');
+        const savedActionItems = localStorage.getItem('actionItems');
+        if (savedActionItems) {
+          try { setActionItems(JSON.parse(savedActionItems)); } catch {}
+        }
         const mockData = generateMockData();
         setData(mockData);
         
@@ -834,15 +839,17 @@ const App: React.FC = () => {
             userRole={getUserRoleName(user)}
             actionItems={actionItems}
             onAddActionItem={(item) => {
-              setActionItems([...actionItems, item]);
-              api.createActionItem(item).catch(() => {});
+              setActionItems(prev => [...prev, item]);
+              api.createActionItem(item).then(saved => {
+                setActionItems(prev => prev.map(a => a.id === item.id ? saved : a));
+              }).catch(() => {});
             }}
             onUpdateActionItem={(item) => {
-              setActionItems(actionItems.map(a => a.id === item.id ? item : a));
+              setActionItems(prev => prev.map(a => a.id === item.id ? item : a));
               api.updateActionItem(item.id, item).catch(() => {});
             }}
             onDeleteActionItem={(id) => {
-              setActionItems(actionItems.filter(a => a.id !== id));
+              setActionItems(prev => prev.filter(a => a.id !== id));
               api.deleteActionItem(id).catch(() => {});
             }}
           />
