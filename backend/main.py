@@ -27,6 +27,15 @@ def ensure_id(provided_id: str, prefix: str = "rec") -> str:
         return str(provided_id).strip()
     return f"{prefix}-{int(datetime.datetime.utcnow().timestamp() * 1000)}"
 
+
+def require_id(provided_id: str, entity: str):
+    """Raise 422 if ID is missing — used for importable business entities."""
+    if not provided_id or not str(provided_id).strip():
+        raise HTTPException(
+            status_code=422,
+            detail=f"{entity} ID is required. When importing data, every record must include a non-empty 'id' field."
+        )
+
 load_dotenv()
 
 app = FastAPI(title="SupplyChain Pro API")
@@ -300,6 +309,8 @@ def get_forecasts():
 
 @app.post("/api/forecasts/batch", response_model=List[ForecastRecord])
 def upsert_forecasts_batch(records: List[ForecastRecord]):
+    for r in records:
+        require_id(r.id, "Forecast record")
     with db() as conn:
         cursor = conn.cursor()
         for r in records:
@@ -404,7 +415,7 @@ def get_clients():
 
 @app.post("/api/clients", response_model=Client)
 def create_client(c: Client):
-    c.id = ensure_id(c.id, "client")
+    require_id(c.id, "Client")
     with db() as conn:
         conn.cursor().execute("""
             INSERT INTO clients (id,name,country,salesRepName,salesRepEmail,subsidiary,section)
@@ -452,7 +463,7 @@ def get_products():
 
 @app.post("/api/products", response_model=Product)
 def create_product(p: Product):
-    p.id = ensure_id(p.id, "prod")
+    require_id(p.id, "Product")
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -509,7 +520,7 @@ def get_suppliers():
 
 @app.post("/api/suppliers", response_model=Supplier)
 def create_supplier(s: Supplier):
-    s.id = ensure_id(s.id, "sup")
+    require_id(s.id, "Supplier")
     with db() as conn:
         conn.cursor().execute("INSERT INTO suppliers (id,name,country) VALUES (?,?,?)", s.id,s.name,s.country)
     return s
