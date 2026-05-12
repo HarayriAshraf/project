@@ -1,5 +1,6 @@
 import os
 import json
+import datetime
 import pyodbc
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -7,6 +8,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Any
 from contextlib import contextmanager
+
+
+def serialize_row(row_dict: dict) -> dict:
+    """Convert datetime.date / datetime.datetime objects to ISO strings."""
+    result = {}
+    for k, v in row_dict.items():
+        if isinstance(v, (datetime.date, datetime.datetime)):
+            result[k] = v.isoformat()
+        else:
+            result[k] = v
+    return result
+
+
+def ensure_id(provided_id: str, prefix: str = "rec") -> str:
+    """Return provided_id if non-empty, otherwise generate a new unique ID."""
+    if provided_id and str(provided_id).strip():
+        return str(provided_id).strip()
+    return f"{prefix}-{int(datetime.datetime.utcnow().timestamp() * 1000)}"
 
 load_dotenv()
 
@@ -213,7 +232,7 @@ class ActionItemUpdate(BaseModel):
 
 
 class ActionItem(BaseModel):
-    id: Optional[int] = None
+    id: Optional[str] = None
     title: str
     description: Optional[str] = ""
     company: Optional[str] = ""
@@ -235,6 +254,7 @@ class User(BaseModel):
     roleId: Optional[str] = ""
     role: Optional[str] = ""
     subsidiary: Optional[str] = ""
+    permission: Optional[int] = 1
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +404,7 @@ def get_clients():
 
 @app.post("/api/clients", response_model=Client)
 def create_client(c: Client):
+    c.id = ensure_id(c.id, "client")
     with db() as conn:
         conn.cursor().execute("""
             INSERT INTO clients (id,name,country,salesRepName,salesRepEmail,subsidiary,section)
@@ -431,6 +452,7 @@ def get_products():
 
 @app.post("/api/products", response_model=Product)
 def create_product(p: Product):
+    p.id = ensure_id(p.id, "prod")
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -487,6 +509,7 @@ def get_suppliers():
 
 @app.post("/api/suppliers", response_model=Supplier)
 def create_supplier(s: Supplier):
+    s.id = ensure_id(s.id, "sup")
     with db() as conn:
         conn.cursor().execute("INSERT INTO suppliers (id,name,country) VALUES (?,?,?)", s.id,s.name,s.country)
     return s
@@ -520,11 +543,12 @@ def get_purchase_orders():
             FROM purchase_orders ORDER BY orderDate DESC
         """)
         cols = [d[0] for d in cursor.description]
-        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        return [serialize_row(dict(zip(cols, row))) for row in cursor.fetchall()]
 
 
 @app.post("/api/purchase-orders", response_model=PurchaseOrder)
 def create_purchase_order(po: PurchaseOrder):
+    po.id = ensure_id(po.id, "po")
     with db() as conn:
         conn.cursor().execute("""
             INSERT INTO purchase_orders (id,supplierId,productId,quantity,orderDate,leadTimeWeeks,
@@ -570,7 +594,7 @@ def get_crm_activities():
             FROM crm_activities ORDER BY date DESC
         """)
         cols = [d[0] for d in cursor.description]
-        activities = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        activities = [serialize_row(dict(zip(cols, row))) for row in cursor.fetchall()]
 
         for a in activities:
             cursor.execute("""
@@ -579,12 +603,13 @@ def get_crm_activities():
                 FROM crm_updates WHERE activityId=? ORDER BY date
             """, a["id"])
             ucols = [d[0] for d in cursor.description]
-            a["updates"] = [dict(zip(ucols, row)) for row in cursor.fetchall()]
+            a["updates"] = [serialize_row(dict(zip(ucols, row))) for row in cursor.fetchall()]
         return activities
 
 
 @app.post("/api/crm-activities", response_model=CRMActivity)
 def create_crm_activity(a: CRMActivity):
+    a.id = ensure_id(a.id, "crm")
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -629,12 +654,22 @@ def update_crm_activity(activity_id: str, a: CRMActivity):
 def _upsert_crm_updates(cursor, activity_id: str, updates: List[CRMUpdate]):
     for u in updates:
         cursor.execute("""
-            INSERT INTO crm_updates (id,activityId,date,stage,purpose,notes,material,
-                clientPrice,supplierPrice,clientPaymentTerm,supplierPaymentTerm,supplierName)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            IF NOT EXISTS (SELECT 1 FROM crm_updates WHERE id=?)
+                INSERT INTO crm_updates (id,activityId,date,stage,purpose,notes,material,
+                    clientPrice,supplierPrice,clientPaymentTerm,supplierPaymentTerm,supplierName)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """,
-        u.id,activity_id,u.date,u.stage,u.purpose,u.notes,u.material,
+        u.id, u.id,activity_id,u.date,u.stage,u.purpose,u.notes,u.material,
         u.clientPrice,u.supplierPrice,u.clientPaymentTerm,u.supplierPaymentTerm,u.supplierName)
+
+
+@app.delete("/api/crm-activities/{activity_id}")
+def delete_crm_activity(activity_id: str):
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM crm_updates WHERE activityId=?", activity_id)
+        cursor.execute("DELETE FROM crm_activities WHERE id=?", activity_id)
+    return {"deleted": activity_id}
 
 
 # ---------------------------------------------------------------------------
@@ -651,7 +686,7 @@ def get_action_items():
             FROM action_items ORDER BY date_opened DESC
         """)
         cols = [d[0] for d in cursor.description]
-        items = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        items = [serialize_row(dict(zip(cols, row))) for row in cursor.fetchall()]
 
         for item in items:
             cursor.execute("""
@@ -659,7 +694,7 @@ def get_action_items():
                 WHERE action_item_id=? ORDER BY date
             """, item["id"])
             ucols = [d[0] for d in cursor.description]
-            item["updates"] = [dict(zip(ucols, row)) for row in cursor.fetchall()]
+            item["updates"] = [serialize_row(dict(zip(ucols, row))) for row in cursor.fetchall()]
         return items
 
 
@@ -667,19 +702,17 @@ def get_action_items():
 def create_action_item(item: ActionItem):
     date_opened = item.date_opened if item.date_opened else None
     due_date = item.due_date if item.due_date else None
+    new_id = ensure_id(str(item.id) if item.id else "", "ai")
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO action_items (title,description,company,status,date_opened,due_date,
+            INSERT INTO action_items (id,title,description,company,status,date_opened,due_date,
                 meeting_topic,assignee_email,assignee_name,subsidiary,notes)
-            OUTPUT INSERTED.id
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """,
-        item.title, item.description or '', item.company or '', item.status or 'Open',
+        new_id, item.title, item.description or '', item.company or '', item.status or 'Open',
         date_opened, due_date, item.meeting_topic or '', item.assignee_email or '',
         item.assignee_name or '', item.subsidiary or '', item.notes or '')
-        row = cursor.fetchone()
-        new_id = int(row[0]) if row else 0
         item.id = new_id
         if item.updates:
             _upsert_action_updates(cursor, new_id, item.updates)
@@ -687,7 +720,7 @@ def create_action_item(item: ActionItem):
 
 
 @app.put("/api/action-items/{item_id}", response_model=ActionItem)
-def update_action_item(item_id: int, item: ActionItem):
+def update_action_item(item_id: str, item: ActionItem):
     date_opened = item.date_opened if item.date_opened else None
     due_date = item.due_date if item.due_date else None
     with db() as conn:
@@ -706,7 +739,7 @@ def update_action_item(item_id: int, item: ActionItem):
 
 
 @app.delete("/api/action-items/{item_id}")
-def delete_action_item(item_id: int):
+def delete_action_item(item_id: str):
     with db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM action_item_updates WHERE action_item_id=?", item_id)
@@ -714,7 +747,7 @@ def delete_action_item(item_id: int):
     return {"deleted": item_id}
 
 
-def _upsert_action_updates(cursor, item_id: int, updates: List[ActionItemUpdate]):
+def _upsert_action_updates(cursor, item_id: str, updates: List[ActionItemUpdate]):
     for u in updates:
         date_val = u.date if u.date else None
         cursor.execute("""
@@ -739,17 +772,16 @@ def get_users():
 
 @app.post("/api/users", response_model=User)
 def create_user(u: User):
+    u.id = ensure_id(u.id, "user")
     perm = u.permission if u.permission is not None else 1
     with db() as conn:
-        conn.cursor().execute("""
-            IF NOT EXISTS (SELECT 1 FROM users WHERE id=?)
-                INSERT INTO users (id,email,name,roleId,role,subsidiary,permission)
-                VALUES (?,?,?,?,?,?,?)
-        """, u.id, u.id,u.email,u.name,u.roleId,u.role,u.subsidiary,perm)
-        conn.cursor().execute("""
-            IF NOT EXISTS (SELECT 1 FROM permissions WHERE user_id=?)
-                INSERT INTO permissions (user_id, can_edit) VALUES (?,?)
-        """, u.id, u.id, perm)
+        conn.cursor().execute(
+            "IF NOT EXISTS (SELECT 1 FROM users WHERE id=?) INSERT INTO users (id,email,name,roleId,role,subsidiary,permission) VALUES (?,?,?,?,?,?,?)",
+            u.id, u.id, u.email, u.name, u.roleId or '', u.role or '', u.subsidiary or '', perm)
+    with db() as conn:
+        conn.cursor().execute(
+            "IF NOT EXISTS (SELECT 1 FROM permissions WHERE user_id=?) INSERT INTO permissions (user_id, can_edit) VALUES (?,?)",
+            u.id, u.id, perm)
     return u
 
 
@@ -757,9 +789,9 @@ def create_user(u: User):
 def update_user(user_id: str, u: User):
     perm = u.permission if u.permission is not None else 1
     with db() as conn:
-        conn.cursor().execute("""
-            UPDATE users SET email=?,name=?,roleId=?,role=?,subsidiary=?,permission=? WHERE id=?
-        """, u.email,u.name,u.roleId,u.role,u.subsidiary,perm,user_id)
+        conn.cursor().execute(
+            "UPDATE users SET email=?,name=?,roleId=?,role=?,subsidiary=?,permission=? WHERE id=?",
+            u.email, u.name, u.roleId or '', u.role or '', u.subsidiary or '', perm, user_id)
     return u
 
 

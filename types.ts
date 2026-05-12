@@ -229,7 +229,7 @@ export interface ActionItemUpdate {
 }
 
 export interface ActionItem {
-  id: number;
+  id: string;
   title: string;
   description?: string;
   company?: string;
