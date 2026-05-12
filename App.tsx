@@ -465,6 +465,9 @@ const App: React.FC = () => {
 
     setData([...data, ...newRecords]);
     setCurrentCycle(nextCycle);
+
+    // Save new cycle records to database
+    api.saveForecastBatch(newRecords).catch(() => {});
   };
 
   if (view === AppView.LOGIN) {
