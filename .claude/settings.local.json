@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(sqlcmd -Q \"SELECT @@SERVERNAME, @@VERSION\" -S \"localhost\" 2>&1)",
+      "PowerShell(New-Item -Path \"c:\\\\Users\\\\WDAGUtilityAccount\\\\Desktop\\\\test\\\\services\" -ItemType Directory -Force)",
+      "PowerShell(New-Item -Path \"c:\\\\Users\\\\WDAGUtilityAccount\\\\Desktop\\\\test\\\\backend\" -ItemType Directory -Force)",
+      "PowerShell(sqllocaldb info 2>&1)",
+      "PowerShell(winget --version 2>&1)",
+      "PowerShell(Test-NetConnection -ComputerName \"download.microsoft.com\" -Port 443 -InformationLevel Quiet)",
+      "PowerShell(Test-NetConnection -ComputerName \"go.microsoft.com\" -Port 443 -InformationLevel Quiet)",
+      "PowerShell(Get-Process)",
+      "PowerShell(Start-Process -FilePath $landingPage -ArgumentList \"/ENU /IACCEPTSQLSERVERLICENSETERMS\")",
+      "PowerShell($landingPage = \"C:\\\\SQL2025\\\\Express_ENU\\\\x64\\\\LANDINGPAGE.EXE\")",
+      "PowerShell(Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object Name, Id, MainWindowTitle | Format-Table -AutoSize)",
+      "PowerShell(Start-Process -FilePath $setup)",
+      "PowerShell($setup = \"C:\\\\SQL2025\\\\Express_ENU\\\\SETUP.EXE\")",
+      "PowerShell(Start-Service \"MSSQL`$SQLEXPRESS\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Service \"MSSQL`$SQLEXPRESS\")",
+      "PowerShell(node --version 2>&1)",
+      "PowerShell(npm --version 2>&1)",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(python3 --version 2>&1)",
+      "PowerShell(pip --version 2>&1)"
+    ]
+  }
+}
