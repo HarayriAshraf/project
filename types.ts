@@ -69,6 +69,12 @@ export interface User {
   roleId: string;
   role?: string;
   subsidiary?: string;
+  permission?: number; // 1 = Editor, 0 = Viewer
+}
+
+export interface Permission {
+  user_id: string;
+  can_edit: number; // 1 = Editor, 0 = Viewer
 }
 
 export interface RoleDefinition {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { User, RoleDefinition, AppView } from '../types';
-import { Plus, Edit2, Trash2, Shield, Users as UsersIcon, Save, X } from 'lucide-react';
+import { User, RoleDefinition, AppView, Permission } from '../types';
+import { Plus, Edit2, Trash2, Shield, Users as UsersIcon, Save, X, Lock, Eye, PenLine } from 'lucide-react';
+import * as api from '../services/api';
 
 interface Props {
   users: User[];
@@ -23,7 +24,28 @@ const UserManagementScreen: React.FC<Props> = ({
   onUpdateRole,
   onDeleteRole
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'roles' | 'permissions'>('users');
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [permSaved, setPermSaved] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    api.getPermissions().then(setPermissions).catch(() => {
+      setPermissions(users.map(u => ({ user_id: u.id, can_edit: u.permission ?? 1 })));
+    });
+  }, []);
+
+  const getPermission = (userId: string) => {
+    const p = permissions.find(p => p.user_id === userId);
+    return p ? p.can_edit : 1;
+  };
+
+  const handleTogglePermission = async (userId: string, current: number) => {
+    const newVal = current === 1 ? 0 : 1;
+    setPermissions(prev => prev.map(p => p.user_id === userId ? { ...p, can_edit: newVal } : p));
+    await api.updatePermission(userId, newVal);
+    setPermSaved(userId);
+    setTimeout(() => setPermSaved(null), 2000);
+  };
   
   // User Form State
   const [isEditingUser, setIsEditingUser] = useState(false);
@@ -121,14 +143,27 @@ const UserManagementScreen: React.FC<Props> = ({
         <button
           onClick={() => setActiveTab('roles')}
           className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'roles' 
-              ? 'border-blue-600 text-blue-600' 
+            activeTab === 'roles'
+              ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
         >
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4" />
             Roles & Authorities
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('permissions')}
+          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === 'permissions'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4" />
+            Permissions
           </div>
         </button>
       </div>
@@ -261,6 +296,97 @@ const UserManagementScreen: React.FC<Props> = ({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'permissions' && (
+        <div className="space-y-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            <p className="font-medium mb-1">Permission Control</p>
+            <p>Set each user as an <strong>Editor (1)</strong> — can add/edit/delete data — or a <strong>Viewer (0)</strong> — read-only access.</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 text-slate-600 text-xs uppercase font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4">User</th>
+                  <th className="px-6 py-4">Email</th>
+                  <th className="px-6 py-4">Role</th>
+                  <th className="px-6 py-4 text-center">Permission Value</th>
+                  <th className="px-6 py-4 text-center">Access Level</th>
+                  <th className="px-6 py-4 text-center">Toggle</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-sm">
+                {users.map(user => {
+                  const canEdit = getPermission(user.id);
+                  const isSaved = permSaved === user.id;
+                  return (
+                    <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-slate-800">{user.name}</td>
+                      <td className="px-6 py-4 text-slate-500">{user.email}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {getRoleName(user.roleId)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-lg font-bold ${canEdit === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {canEdit}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {canEdit === 1 ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                            <PenLine className="w-3 h-3" /> Editor
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                            <Eye className="w-3 h-3" /> Viewer
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => handleTogglePermission(user.id, canEdit)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${canEdit === 1 ? 'bg-green-500' : 'bg-slate-300'}`}
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${canEdit === 1 ? 'translate-x-6' : 'translate-x-1'}`} />
+                          </button>
+                          {isSaved && <span className="text-xs text-green-600 font-medium">Saved ✓</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-blue-600" />
+              Permissions Reference
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-start gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-600 text-white font-bold text-lg">1</span>
+                <div>
+                  <p className="font-semibold text-green-800">Editor</p>
+                  <p className="text-sm text-green-700 mt-0.5">Can create, edit, and delete records. Full write access to the system.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-500 text-white font-bold text-lg">0</span>
+                <div>
+                  <p className="font-semibold text-slate-700">Viewer</p>
+                  <p className="text-sm text-slate-600 mt-0.5">Read-only access. Can view all data but cannot make any changes.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

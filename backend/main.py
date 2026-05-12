@@ -732,33 +732,73 @@ def _upsert_action_updates(cursor, item_id: int, updates: List[ActionItemUpdate]
 def get_users():
     with db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id,email,name,roleId,role,subsidiary FROM users ORDER BY name")
+        cursor.execute("SELECT id,email,name,roleId,role,subsidiary,permission FROM users ORDER BY name")
         cols = [d[0] for d in cursor.description]
         return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
 @app.post("/api/users", response_model=User)
 def create_user(u: User):
+    perm = u.permission if u.permission is not None else 1
     with db() as conn:
         conn.cursor().execute("""
             IF NOT EXISTS (SELECT 1 FROM users WHERE id=?)
-                INSERT INTO users (id,email,name,roleId,role,subsidiary)
-                VALUES (?,?,?,?,?,?)
-        """, u.id, u.id,u.email,u.name,u.roleId,u.role,u.subsidiary)
+                INSERT INTO users (id,email,name,roleId,role,subsidiary,permission)
+                VALUES (?,?,?,?,?,?,?)
+        """, u.id, u.id,u.email,u.name,u.roleId,u.role,u.subsidiary,perm)
+        conn.cursor().execute("""
+            IF NOT EXISTS (SELECT 1 FROM permissions WHERE user_id=?)
+                INSERT INTO permissions (user_id, can_edit) VALUES (?,?)
+        """, u.id, u.id, perm)
     return u
 
 
 @app.put("/api/users/{user_id}", response_model=User)
 def update_user(user_id: str, u: User):
+    perm = u.permission if u.permission is not None else 1
     with db() as conn:
         conn.cursor().execute("""
-            UPDATE users SET email=?,name=?,roleId=?,role=?,subsidiary=? WHERE id=?
-        """, u.email,u.name,u.roleId,u.role,u.subsidiary,user_id)
+            UPDATE users SET email=?,name=?,roleId=?,role=?,subsidiary=?,permission=? WHERE id=?
+        """, u.email,u.name,u.roleId,u.role,u.subsidiary,perm,user_id)
     return u
 
 
 @app.delete("/api/users/{user_id}")
 def delete_user(user_id: str):
     with db() as conn:
-        conn.cursor().execute("DELETE FROM users WHERE id=?", user_id)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM permissions WHERE user_id=?", user_id)
+        cursor.execute("DELETE FROM users WHERE id=?", user_id)
     return {"deleted": user_id}
+
+
+# ---------------------------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------------------------
+
+class PermissionModel(BaseModel):
+    user_id: str
+    can_edit: int  # 1 = Editor, 0 = Viewer
+
+
+@app.get("/api/permissions", response_model=List[PermissionModel])
+def get_permissions():
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, can_edit FROM permissions ORDER BY user_id")
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+@app.put("/api/permissions/{user_id}", response_model=PermissionModel)
+def update_permission(user_id: str, p: PermissionModel):
+    with db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            IF EXISTS (SELECT 1 FROM permissions WHERE user_id=?)
+                UPDATE permissions SET can_edit=?, updatedAt=GETDATE() WHERE user_id=?
+            ELSE
+                INSERT INTO permissions (user_id, can_edit) VALUES (?,?)
+        """, user_id, p.can_edit, user_id, user_id, p.can_edit)
+        cursor.execute("UPDATE users SET permission=? WHERE id=?", p.can_edit, user_id)
+    return p

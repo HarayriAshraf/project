@@ -8,6 +8,7 @@ import {
   CRMActivity,
   ActionItem,
   User,
+  Permission,
 } from '../types';
 
 const BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL)
@@ -187,3 +188,13 @@ export const updateUser = (id: string, user: User) =>
 
 export const deleteUser = (id: string) =>
   request<void>(`/users/${id}`, { method: 'DELETE' });
+
+// Permissions
+export const getPermissions = () =>
+  request<Permission[]>('/permissions');
+
+export const updatePermission = (userId: string, canEdit: number) =>
+  request<Permission>(`/permissions/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ user_id: userId, can_edit: canEdit }),
+  });
